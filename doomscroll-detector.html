@@ -505,7 +505,7 @@
                 
                 updateStatus('Running ✓', 'good');
                 isRunning = true;
-            } catch (error) {
+            } catch (error) { 
                 updateStatus('Error: ' + error.message, 'warning');
                 startButton.disabled = false;
                 startButton.textContent = 'Try Again';
