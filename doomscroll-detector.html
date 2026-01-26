@@ -1,0 +1,519 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Doomscroll Detector</title>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 20px;
+            padding: 30px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            max-width: 1200px;
+            width: 100%;
+        }
+
+        h1 {
+            text-align: center;
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 2.5em;
+        }
+
+        .subtitle {
+            text-align: center;
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 1.1em;
+        }
+
+        .video-container {
+            position: relative;
+            width: 100%;
+            max-width: 640px;
+            margin: 0 auto 20px;
+            border-radius: 15px;
+            overflow: hidden;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+        }
+
+        #webcam {
+            width: 100%;
+            height: auto;
+            display: block;
+            transform: scaleX(-1);
+        }
+
+        .warning-overlay {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #ff4444;
+            color: white;
+            padding: 15px 30px;
+            border-radius: 10px;
+            font-size: 1.3em;
+            font-weight: bold;
+            animation: pulse 1s infinite;
+            display: none;
+            z-index: 10;
+        }
+
+        .warning-overlay.active {
+            display: block;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; transform: translateX(-50%) scale(1); }
+            50% { opacity: 0.8; transform: translateX(-50%) scale(1.05); }
+        }
+
+        .status-panel {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+
+        .status-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px;
+            margin-bottom: 10px;
+            background: white;
+            border-radius: 8px;
+        }
+
+        .status-label {
+            font-weight: 600;
+            color: #555;
+        }
+
+        .status-value {
+            font-weight: bold;
+            font-family: monospace;
+        }
+
+        .status-value.good {
+            color: #28a745;
+        }
+
+        .status-value.warning {
+            color: #ff4444;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 30px;
+            background: #e0e0e0;
+            border-radius: 15px;
+            overflow: hidden;
+            margin-top: 10px;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #ff6b6b, #ff4444);
+            transition: width 0.1s linear;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+        }
+
+        .info-box {
+            background: #e3f2fd;
+            border-left: 4px solid #2196f3;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 20px;
+        }
+
+        .info-box h3 {
+            color: #1976d2;
+            margin-bottom: 10px;
+        }
+
+        .info-box ul {
+            list-style-position: inside;
+            color: #555;
+        }
+
+        .info-box li {
+            margin-bottom: 5px;
+        }
+
+        #startButton {
+            display: block;
+            width: 200px;
+            margin: 20px auto;
+            padding: 15px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 1.1em;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        #startButton:hover {
+            background: #5568d3;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        #startButton:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .video-popup {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.95);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .video-popup.active {
+            display: flex;
+        }
+
+        .video-popup-content {
+            position: relative;
+            width: 90%;
+            max-width: 800px;
+        }
+
+        #warningVideo {
+            width: 100%;
+            border-radius: 10px;
+            box-shadow: 0 0 50px rgba(255, 68, 68, 0.5);
+        }
+
+        .video-message {
+            text-align: center;
+            color: white;
+            font-size: 1.5em;
+            margin-top: 20px;
+            font-weight: bold;
+        }
+
+        #videoUrlInput {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #667eea;
+            border-radius: 8px;
+            font-size: 1em;
+            margin-bottom: 10px;
+        }
+
+        .file-upload {
+            margin-bottom: 20px;
+        }
+
+        .file-upload label {
+            display: block;
+            font-weight: 600;
+            color: #555;
+            margin-bottom: 8px;
+        }
+
+        #videoFile {
+            width: 100%;
+            padding: 10px;
+            border: 2px dashed #667eea;
+            border-radius: 8px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>👁️ Doomscroll Detector</h1>
+        <p class="subtitle">Stop the scroll, save your soul</p>
+
+        <div class="file-upload">
+            <label>Upload Your Warning Video:</label>
+            <input type="file" id="videoFile" accept="video/*">
+            <p style="text-align: center; color: #999; margin-top: 10px;">Or paste a video URL:</p>
+            <input type="text" id="videoUrlInput" placeholder="https://example.com/video.mp4">
+        </div>
+
+        <button id="startButton">Start Detection</button>
+
+        <div class="video-container" id="videoContainer" style="display: none;">
+            <video id="webcam" autoplay playsinline></video>
+            <div class="warning-overlay" id="warningOverlay">⚠️ DOOMSCROLLING ALARM!</div>
+        </div>
+
+        <div class="status-panel" id="statusPanel" style="display: none;">
+            <div class="status-item">
+                <span class="status-label">System Status:</span>
+                <span class="status-value" id="systemStatus">Initializing...</span>
+            </div>
+            <div class="status-item">
+                <span class="status-label">Posture:</span>
+                <span class="status-value good" id="postureStatus">Good</span>
+            </div>
+            <div class="status-item" id="countdownContainer" style="display: none;">
+                <div style="width: 100%;">
+                    <span class="status-label">Video plays in:</span>
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="progressFill" style="width: 0%;">
+                            <span id="countdownText">2.0s</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="info-box">
+            <h3>How It Works</h3>
+            <ul>
+                <li>Upload your own video or paste a URL (optional)</li>
+                <li>Click "Start Detection" to begin</li>
+                <li>Look down (doomscroll position) for 2 seconds</li>
+                <li>Your video will automatically play full screen!</li>
+                <li>Look up to stop the video and reset</li>
+            </ul>
+        </div>
+    </div>
+
+    <div class="video-popup" id="videoPopup">
+        <div class="video-popup-content">
+            <video id="warningVideo" loop></video>
+            <p class="video-message">🚨 STOP DOOMSCROLLING! Look up to dismiss 🚨</p>
+        </div>
+    </div>
+
+    <script>
+        let faceMesh = null;
+        let camera = null;
+        let video = null;
+        let isRunning = false;
+        let lookDownStartTime = null;
+        let isVideoPlaying = false;
+        let videoUrl = null;
+
+        const LOOK_DOWN_THRESHOLD = 0.35;
+        const WARNING_DELAY = 2000;
+        const DEBOUNCE_THRESHOLD = 0.45;
+
+        // Default video (Skyrim meme or similar)
+        const DEFAULT_VIDEO = 'https://www.youtube.com/watch?v=dQw4w9WgXcQ'; // You can replace this
+
+        // Handle video file upload
+        document.getElementById('videoFile').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (file) {
+                videoUrl = URL.createObjectURL(file);
+                updateStatus('Custom video loaded ✓', 'good');
+            }
+        });
+
+        // Handle video URL input
+        document.getElementById('videoUrlInput').addEventListener('input', function(e) {
+            if (e.target.value.trim()) {
+                videoUrl = e.target.value.trim();
+            }
+        });
+
+        function updateStatus(message, type = 'good') {
+            const statusEl = document.getElementById('systemStatus');
+            statusEl.textContent = message;
+            statusEl.className = 'status-value ' + type;
+        }
+
+        function updatePosture(isLookingDown) {
+            const postureEl = document.getElementById('postureStatus');
+            if (isLookingDown) {
+                postureEl.textContent = '⚠️ Looking Down';
+                postureEl.className = 'status-value warning';
+            } else {
+                postureEl.textContent = '✓ Good Posture';
+                postureEl.className = 'status-value good';
+            }
+        }
+
+        function updateCountdown(elapsed) {
+            const container = document.getElementById('countdownContainer');
+            const fill = document.getElementById('progressFill');
+            const text = document.getElementById('countdownText');
+            
+            const remaining = Math.max(0, (WARNING_DELAY - elapsed) / 1000);
+            const progress = (elapsed / WARNING_DELAY) * 100;
+            
+            if (elapsed > 0 && !isVideoPlaying) {
+                container.style.display = 'block';
+                fill.style.width = Math.min(progress, 100) + '%';
+                text.textContent = remaining.toFixed(1) + 's';
+            } else {
+                container.style.display = 'none';
+            }
+        }
+
+        function playWarningVideo() {
+            const popup = document.getElementById('videoPopup');
+            const warningVideo = document.getElementById('warningVideo');
+            const overlay = document.getElementById('warningOverlay');
+            
+            // Set video source
+            if (videoUrl) {
+                warningVideo.src = videoUrl;
+            } else {
+                // Use a default meme video
+                warningVideo.src = 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4';
+            }
+            
+            popup.classList.add('active');
+            overlay.classList.add('active');
+            warningVideo.play();
+            isVideoPlaying = true;
+        }
+
+        function stopWarningVideo() {
+            const popup = document.getElementById('videoPopup');
+            const warningVideo = document.getElementById('warningVideo');
+            const overlay = document.getElementById('warningOverlay');
+            
+            popup.classList.remove('active');
+            overlay.classList.remove('active');
+            warningVideo.pause();
+            warningVideo.currentTime = 0;
+            isVideoPlaying = false;
+        }
+
+        function onResults(results) {
+            if (!results.multiFaceLandmarks || results.multiFaceLandmarks.length === 0) {
+                updatePosture(false);
+                lookDownStartTime = null;
+                updateCountdown(0);
+                return;
+            }
+
+            const landmarks = results.multiFaceLandmarks[0];
+            
+            // Get eye and nose landmarks
+            const leftEye = landmarks[159];
+            const rightEye = landmarks[386];
+            const noseTip = landmarks[1];
+            const chin = landmarks[152];
+            
+            // Calculate if looking down
+            const eyeCenterY = (leftEye.y + rightEye.y) / 2;
+            const faceHeight = chin.y - eyeCenterY;
+            const noseRelativePos = (noseTip.y - eyeCenterY) / faceHeight;
+            
+            const threshold = isVideoPlaying ? DEBOUNCE_THRESHOLD : LOOK_DOWN_THRESHOLD;
+            const isLookingDown = noseRelativePos > threshold;
+            
+            updatePosture(isLookingDown);
+            
+            if (isLookingDown) {
+                if (!lookDownStartTime) {
+                    lookDownStartTime = Date.now();
+                }
+                
+                const elapsed = Date.now() - lookDownStartTime;
+                updateCountdown(elapsed);
+                
+                if (elapsed >= WARNING_DELAY && !isVideoPlaying) {
+                    playWarningVideo();
+                }
+            } else {
+                lookDownStartTime = null;
+                updateCountdown(0);
+                if (isVideoPlaying) {
+                    stopWarningVideo();
+                }
+            }
+        }
+
+        async function start() {
+            const startButton = document.getElementById('startButton');
+            startButton.disabled = true;
+            startButton.textContent = 'Loading...';
+            
+            try {
+                video = document.getElementById('webcam');
+                
+                // Initialize MediaPipe Face Mesh
+                updateStatus('Loading AI model...');
+                faceMesh = new FaceMesh({
+                    locateFile: (file) => {
+                        return `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`;
+                    }
+                });
+                
+                faceMesh.setOptions({
+                    maxNumFaces: 1,
+                    refineLandmarks: true,
+                    minDetectionConfidence: 0.5,
+                    minTrackingConfidence: 0.5
+                });
+                
+                faceMesh.onResults(onResults);
+                
+                // Setup camera
+                updateStatus('Starting camera...');
+                camera = new Camera(video, {
+                    onFrame: async () => {
+                        if (isRunning) {
+                            await faceMesh.send({image: video});
+                        }
+                    },
+                    width: 640,
+                    height: 480
+                });
+                
+                await camera.start();
+                
+                document.getElementById('videoContainer').style.display = 'block';
+                document.getElementById('statusPanel').style.display = 'block';
+                startButton.style.display = 'none';
+                
+                updateStatus('Running ✓', 'good');
+                isRunning = true;
+            } catch (error) {
+                updateStatus('Error: ' + error.message, 'warning');
+                startButton.disabled = false;
+                startButton.textContent = 'Try Again';
+                alert('Error: ' + error.message);
+            }
+        }
+
+        document.getElementById('startButton').addEventListener('click', start);
+    </script>
+</body>
+</html>
